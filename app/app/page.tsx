@@ -86,7 +86,7 @@ function HomeContent() {
           </div>
           <AuthPage onAuthComplete={handleRegistrationComplete} />
         </div>
-        <RegistrationDebug />
+        {process.env.NODE_ENV === 'development' && <RegistrationDebug />}
       </div>
     )
   }

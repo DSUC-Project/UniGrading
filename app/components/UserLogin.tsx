@@ -29,7 +29,6 @@ export function UserLogin({ onLoginComplete }: UserLoginProps) {
         return
       }
 
-      // Simulate login delay
       await new Promise(resolve => setTimeout(resolve, 1500))
 
       const userData = JSON.parse(savedUser)
@@ -38,6 +37,13 @@ export function UserLogin({ onLoginComplete }: UserLoginProps) {
       if (!userData.username || !userData.role) {
         toast.error('Invalid user data. Please register again.')
         localStorage.removeItem(`user_${publicKey.toString()}`)
+        setIsLoggingIn(false)
+        return
+      }
+
+      // Check if user is active
+      if (userData.isActive === false) {
+        toast.error('Your account has been deactivated. Please contact an administrator.')
         setIsLoggingIn(false)
         return
       }

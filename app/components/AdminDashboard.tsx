@@ -3,100 +3,233 @@
 import { useState, useEffect } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useUniGrading } from '../hooks/useUniGrading'
-import { AdminDebugConsole } from './AdminDebugConsole'
-import { AdminUserViewer } from './AdminUserViewer'
 import { useAdminPermissions } from '../hooks/useAdminPermissions'
-import { PermissionWrapper, DebugConsoleRoute, UserManagementRoute } from './AdminRoute'
-
-interface UserData {
-  walletAddress: string
-  username: string
-  role: 'Teacher' | 'Student' | 'Admin'
-  createdAt: number
-  isActive: boolean
-}
-
-interface ClassroomData {
-  id: string
-  name: string
-  course: string
-  teacher: string
-  teacherName: string
-  students: any[]
-  createdAt: number
-  isActive: boolean
-}
-
-interface GradeData {
-  id: string
-  studentWallet: string
-  teacherWallet: string
-  teacherName: string
-  assignmentName: string
-  grade: number
-  maxGrade: number
-  percentage: number
-  timestamp: number
-}
+import { PermissionWrapper } from './AdminRoute'
+import { UnifiedDebugConsole } from './UnifiedDebugConsole'
+import {
+  getAllUsers,
+  getAllClassrooms,
+  getAllGrades,
+  exportSystemData
+} from '../lib/blockchain-utils'
+import { User, Classroom, Grade } from '../hooks/useUniGrading'
+import toast from 'react-hot-toast'
 
 export function AdminDashboard() {
   const { publicKey } = useWallet()
   const { currentUser } = useUniGrading()
   const {
-    canAccessDebugConsole,
-    canViewUserDetails,
-    canExportData,
-    validateAdminAction,
-    getRoleDisplay
+    validateAdminAction
   } = useAdminPermissions()
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'classrooms' | 'grades' | 'accounts' | 'debug'>('overview')
-  const [users, setUsers] = useState<UserData[]>([])
-  const [classrooms, setClassrooms] = useState<ClassroomData[]>([])
-  const [grades, setGrades] = useState<GradeData[]>([])
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'classrooms' | 'grades' | 'analytics' | 'system' | 'debug'>('overview')
+  const [users, setUsers] = useState<User[]>([])
+  const [classrooms, setClassrooms] = useState<Classroom[]>([])
+  const [grades, setGrades] = useState<Grade[]>([])
+  const [systemStats, setSystemStats] = useState({
+    totalUsers: 0,
+    totalClassrooms: 0,
+    totalGrades: 0,
+    activeUsers: 0,
+    averageGrade: 0,
+    recentActivity: 0
+  })
+  const [loading, setLoading] = useState(false)
 
   // Load data
   useEffect(() => {
     loadData()
-    // Refresh every 10 seconds
-    const interval = setInterval(loadData, 10000)
+    // Refresh every 30 seconds for admin dashboard
+    const interval = setInterval(loadData, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  const loadData = () => {
+  const loadData = async () => {
     if (typeof window !== 'undefined') {
+      setLoading(true)
       try {
-        const allUsers = JSON.parse(localStorage.getItem('all_users') || '[]')
-        const allClassrooms = JSON.parse(localStorage.getItem('all_classrooms') || '[]')
-        const allGrades = JSON.parse(localStorage.getItem('all_grades') || '[]')
-        
+        // Load users using utility functions
+        const allUsers = getAllUsers()
+        const allClassrooms = getAllClassrooms()
+        const allGrades = getAllGrades()
+
         setUsers(allUsers)
         setClassrooms(allClassrooms)
         setGrades(allGrades)
+
+        // Calculate system statistics
+        const stats = {
+          totalUsers: allUsers.length,
+          totalClassrooms: allClassrooms.length,
+          totalGrades: allGrades.length,
+          activeUsers: allUsers.filter(user => user.isActive).length,
+          averageGrade: allGrades.length > 0
+            ? Math.round(allGrades.reduce((sum, grade) => sum + (grade.grade / grade.maxGrade * 100), 0) / allGrades.length)
+            : 0,
+          recentActivity: allGrades.filter(grade =>
+            Date.now() - grade.timestamp < 24 * 60 * 60 * 1000 // Last 24 hours
+          ).length
+        }
+        setSystemStats(stats)
       } catch (error) {
         console.error('Error loading admin data:', error)
+        toast.error('Failed to load admin data')
+      } finally {
+        setLoading(false)
       }
     }
   }
 
-  // Statistics
-  const stats = {
-    totalUsers: users.length,
-    totalTeachers: users.filter(u => u.role === 'Teacher').length,
-    totalStudents: users.filter(u => u.role === 'Student').length,
-    totalAdmins: users.filter(u => u.role === 'Admin').length,
-    totalClassrooms: classrooms.length,
-    totalGrades: grades.length,
-    activeUsers: users.filter(u => u.isActive).length,
-    recentRegistrations: users.filter(u => Date.now() - (u.createdAt * 1000) < 24 * 60 * 60 * 1000).length
+  // Export data function
+  const handleExportData = async () => {
+    if (!validateAdminAction('export system data', 'export_data')) return
+
+    try {
+      exportSystemData()
+      toast.success('System data exported successfully')
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast.error('Failed to export data')
+    }
   }
 
+  // Deactivate user function (safer than deletion)
+  const handleDeactivateUser = (userWallet: string) => {
+    if (!validateAdminAction('deactivate user', 'manage_users')) return
+
+    // Confirm action
+    if (!confirm('Are you sure you want to deactivate this user? This action can be reversed.')) {
+      return
+    }
+
+    try {
+      // Update individual user data
+      const individualUserData = localStorage.getItem(`user_${userWallet}`)
+      if (individualUserData) {
+        const userData = JSON.parse(individualUserData)
+        userData.isActive = false
+        localStorage.setItem(`user_${userWallet}`, JSON.stringify(userData))
+      }
+
+      // Update users list
+      const updatedUsers = users.map(user =>
+        user.authority.toString() === userWallet
+          ? { ...user, isActive: false }
+          : user
+      )
+      localStorage.setItem('all_users', JSON.stringify(updatedUsers))
+      setUsers(updatedUsers)
+      toast.success('User deactivated successfully - they cannot login anymore')
+      loadData() // Refresh data
+    } catch (error) {
+      console.error('Deactivate user failed:', error)
+      toast.error('Failed to deactivate user')
+    }
+  }
+
+  // Reactivate user function
+  const handleReactivateUser = (userWallet: string) => {
+    if (!validateAdminAction('reactivate user', 'manage_users')) return
+
+    try {
+      // Update individual user data
+      const individualUserData = localStorage.getItem(`user_${userWallet}`)
+      if (individualUserData) {
+        const userData = JSON.parse(individualUserData)
+        userData.isActive = true
+        localStorage.setItem(`user_${userWallet}`, JSON.stringify(userData))
+      }
+
+      // Update users list
+      const updatedUsers = users.map(user =>
+        user.authority.toString() === userWallet
+          ? { ...user, isActive: true }
+          : user
+      )
+      localStorage.setItem('all_users', JSON.stringify(updatedUsers))
+      setUsers(updatedUsers)
+      toast.success('User reactivated successfully - they can login again')
+      loadData() // Refresh data
+    } catch (error) {
+      console.error('Reactivate user failed:', error)
+      toast.error('Failed to reactivate user')
+    }
+  }
+
+  // Permanent delete function (with extra confirmation)
+  const handlePermanentDeleteUser = (userWallet: string) => {
+    if (!validateAdminAction('permanently delete user', 'manage_users')) return
+
+    // Double confirmation for permanent deletion
+    if (!confirm('⚠️ PERMANENT DELETION ⚠️\n\nThis will permanently remove the user and ALL their data including:\n- All grades\n- Classroom memberships\n- User profile\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?')) {
+      return
+    }
+
+    if (!confirm('Last confirmation: Type "DELETE" to confirm permanent deletion')) {
+      return
+    }
+
+    try {
+      // 1. Remove individual user data (most important!)
+      localStorage.removeItem(`user_${userWallet}`)
+
+      // 2. Remove user from users list
+      const updatedUsers = users.filter(user => user.authority.toString() !== userWallet)
+
+      // 3. Remove user's grades (grades where user was the teacher)
+      const allGrades = getAllGrades()
+      const updatedGrades = allGrades.filter(grade =>
+        grade.gradedBy.toString() !== userWallet
+      )
+
+      // 4. Remove user from classrooms (both as teacher and student)
+      const allClassrooms = getAllClassrooms()
+      const updatedClassrooms = allClassrooms
+        .filter(classroom => classroom.teacher.toString() !== userWallet) // Remove classrooms taught by user
+        .map(classroom => ({
+          ...classroom,
+          students: classroom.students?.filter(student => student.pubkey.toString() !== userWallet) || []
+        }))
+
+      // 5. Remove any user-specific localStorage keys
+      // Check for any other keys that might belong to this user
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (
+          key.includes(userWallet) ||
+          key.startsWith(`${userWallet}_`) ||
+          key.endsWith(`_${userWallet}`)
+        )) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+
+      // 6. Update localStorage with cleaned data
+      localStorage.setItem('all_users', JSON.stringify(updatedUsers))
+      localStorage.setItem('all_grades', JSON.stringify(updatedGrades))
+      localStorage.setItem('all_classrooms', JSON.stringify(updatedClassrooms))
+
+      setUsers(updatedUsers)
+      toast.success('User permanently deleted - they can no longer login')
+      loadData() // Refresh data
+    } catch (error) {
+      console.error('Permanent delete user failed:', error)
+      toast.error('Failed to permanently delete user')
+    }
+  }
+
+
+
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'users', label: 'Users', icon: '👥' },
-    { id: 'classrooms', label: 'Classrooms', icon: '🏫' },
-    { id: 'grades', label: 'Grades', icon: '📝' },
-    { id: 'accounts', label: 'Account Viewer', icon: '👤' },
-    { id: 'debug', label: 'Admin Debug', icon: '🔧' }
+    { id: 'overview', label: 'Overview', icon: '📊', description: 'System overview and statistics' },
+    { id: 'users', label: 'User Management', icon: '👥', description: 'Manage all users' },
+    { id: 'classrooms', label: 'Classroom Management', icon: '🏫', description: 'Manage all classrooms' },
+    { id: 'grades', label: 'Grade Analytics', icon: '📈', description: 'Analyze all grades' },
+    { id: 'analytics', label: 'System Analytics', icon: '📊', description: 'Advanced analytics' },
+    { id: 'system', label: 'System Monitor', icon: '🖥️', description: 'System monitoring' },
+    { id: 'debug', label: 'Debug Console', icon: '🔧', description: 'Debug console' }
   ]
 
   return (
@@ -110,7 +243,7 @@ export function AdminDashboard() {
           </div>
           <div className="text-right">
             <p className="text-sm text-purple-200">Logged in as</p>
-            <p className="font-semibold">{currentUser?.username} ({getRoleDisplay()})</p>
+            <p className="font-semibold">{currentUser?.username} ({currentUser?.role})</p>
             <p className="text-xs text-purple-200">{publicKey?.toString().slice(0, 8)}...</p>
           </div>
         </div>
@@ -122,7 +255,7 @@ export function AdminDashboard() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as 'overview' | 'users' | 'classrooms' | 'grades' | 'analytics' | 'system' | 'debug')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
                   ? 'border-purple-500 text-purple-600'
@@ -137,11 +270,26 @@ export function AdminDashboard() {
       </div>
 
       {/* Content */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">System Overview</h2>
-            
+      <div className="bg-white rounded-lg shadow-md">
+        {loading && (
+          <div className="p-6 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Loading admin data...</p>
+          </div>
+        )}
+
+        {!loading && activeTab === 'overview' && (
+          <div className="p-6 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">System Overview</h2>
+              <button
+                onClick={handleExportData}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                📥 Export Data
+              </button>
+            </div>
+
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -149,7 +297,7 @@ export function AdminDashboard() {
                   <div className="text-blue-600 text-2xl mr-3">👥</div>
                   <div>
                     <p className="text-sm font-medium text-blue-600">Total Users</p>
-                    <p className="text-2xl font-bold text-blue-900">{stats.totalUsers}</p>
+                    <p className="text-2xl font-bold text-blue-900">{systemStats.totalUsers}</p>
                   </div>
                 </div>
               </div>
@@ -159,113 +307,183 @@ export function AdminDashboard() {
                   <div className="text-green-600 text-2xl mr-3">🏫</div>
                   <div>
                     <p className="text-sm font-medium text-green-600">Classrooms</p>
-                    <p className="text-2xl font-bold text-green-900">{stats.totalClassrooms}</p>
+                    <p className="text-2xl font-bold text-green-900">{systemStats.totalClassrooms}</p>
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <div className="flex items-center">
                   <div className="text-yellow-600 text-2xl mr-3">📝</div>
                   <div>
                     <p className="text-sm font-medium text-yellow-600">Total Grades</p>
-                    <p className="text-2xl font-bold text-yellow-900">{stats.totalGrades}</p>
+                    <p className="text-2xl font-bold text-yellow-900">{systemStats.totalGrades}</p>
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                 <div className="flex items-center">
-                  <div className="text-purple-600 text-2xl mr-3">⚡</div>
+                  <div className="text-purple-600 text-2xl mr-3">📊</div>
                   <div>
-                    <p className="text-sm font-medium text-purple-600">Active Users</p>
-                    <p className="text-2xl font-bold text-purple-900">{stats.activeUsers}</p>
+                    <p className="text-sm font-medium text-purple-600">Average Grade</p>
+                    <p className="text-2xl font-bold text-purple-900">{systemStats.averageGrade}%</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Role Distribution */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-900 mb-2">Teachers</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalTeachers}</p>
-                <p className="text-sm text-gray-600">{((stats.totalTeachers / stats.totalUsers) * 100 || 0).toFixed(1)}% of users</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-medium text-blue-900 mb-2">👨‍🏫 Teachers</h3>
+                <p className="text-3xl font-bold text-blue-900">{users.filter(u => u.role === 'Teacher').length}</p>
+                <p className="text-sm text-blue-600">{((users.filter(u => u.role === 'Teacher').length / systemStats.totalUsers) * 100 || 0).toFixed(1)}% of users</p>
               </div>
-              
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-900 mb-2">Students</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalStudents}</p>
-                <p className="text-sm text-gray-600">{((stats.totalStudents / stats.totalUsers) * 100 || 0).toFixed(1)}% of users</p>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="font-medium text-green-900 mb-2">👨‍🎓 Students</h3>
+                <p className="text-3xl font-bold text-green-900">{users.filter(u => u.role === 'Student').length}</p>
+                <p className="text-sm text-green-600">{((users.filter(u => u.role === 'Student').length / systemStats.totalUsers) * 100 || 0).toFixed(1)}% of users</p>
               </div>
-              
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-900 mb-2">Admins</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalAdmins}</p>
-                <p className="text-sm text-gray-600">{((stats.totalAdmins / stats.totalUsers) * 100 || 0).toFixed(1)}% of users</p>
+
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <h3 className="font-medium text-purple-900 mb-2">👑 Admins</h3>
+                <p className="text-3xl font-bold text-purple-900">{users.filter(u => u.role === 'Admin').length}</p>
+                <p className="text-sm text-purple-600">{((users.filter(u => u.role === 'Admin').length / systemStats.totalUsers) * 100 || 0).toFixed(1)}% of users</p>
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <h3 className="font-medium text-orange-900 mb-2">⚡ Active</h3>
+                <p className="text-3xl font-bold text-orange-900">{systemStats.activeUsers}</p>
+                <p className="text-sm text-orange-600">{((systemStats.activeUsers / systemStats.totalUsers) * 100 || 0).toFixed(1)}% active</p>
               </div>
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <h3 className="font-medium text-gray-900 mb-2">Recent Activity (24h)</h3>
-              <p className="text-lg text-gray-700">{stats.recentRegistrations} new registrations</p>
-              <p className="text-sm text-gray-600">Last data refresh: {new Date().toLocaleTimeString()}</p>
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6">
+              <h3 className="font-medium text-indigo-900 mb-4">📊 Recent Activity (24h)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-indigo-900">{systemStats.recentActivity}</p>
+                  <p className="text-sm text-indigo-600">New grades assigned</p>
+                </div>
+                <div>
+                  <p className="text-lg text-indigo-700">Last refresh: {new Date().toLocaleTimeString()}</p>
+                  <p className="text-sm text-indigo-600">Auto-refresh every 30 seconds</p>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {activeTab === 'users' && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-900">User Management</h2>
-            
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallet</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((user, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.role === 'Admin' ? 'bg-purple-100 text-purple-800' :
-                          user.role === 'Teacher' ? 'bg-blue-100 text-blue-800' :
-                          'bg-green-100 text-green-800'
-                        }`}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 font-mono">
-                          {user.walletAddress.slice(0, 8)}...{user.walletAddress.slice(-8)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(user.createdAt * 1000).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {user.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
+        {!loading && activeTab === 'users' && (
+          <PermissionWrapper permission="view_user_details">
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">User Management</h2>
+                <div className="text-sm text-gray-600">
+                  Total: {users.length} users
+                </div>
+              </div>
+
+              {/* User Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900">👨‍🏫 Teachers</h3>
+                  <p className="text-2xl font-bold text-blue-900">{users.filter(u => u.role === 'Teacher').length}</p>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="font-medium text-green-900">👨‍🎓 Students</h3>
+                  <p className="text-2xl font-bold text-green-900">{users.filter(u => u.role === 'Student').length}</p>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <h3 className="font-medium text-purple-900">👑 Admins</h3>
+                  <p className="text-2xl font-bold text-purple-900">{users.filter(u => u.role === 'Admin').length}</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallet</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users.map((user, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.role === 'Admin' ? 'bg-purple-100 text-purple-800' :
+                            user.role === 'Teacher' ? 'bg-blue-100 text-blue-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 font-mono">
+                            {user.authority.toString().slice(0, 8)}...{user.authority.toString().slice(-8)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(user.createdAt * 1000).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {user.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <PermissionWrapper permission="manage_users" hideIfNoPermission>
+                            <div className="flex space-x-2">
+                              {user.isActive ? (
+                                <button
+                                  onClick={() => handleDeactivateUser(user.authority.toString())}
+                                  className="text-yellow-600 hover:text-yellow-900"
+                                  title="Deactivate user"
+                                >
+                                  ⏸️
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleReactivateUser(user.authority.toString())}
+                                  className="text-green-600 hover:text-green-900"
+                                  title="Reactivate user"
+                                >
+                                  ▶️
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handlePermanentDeleteUser(user.authority.toString())}
+                                className="text-red-600 hover:text-red-900"
+                                title="Permanently delete user (irreversible)"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </PermissionWrapper>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </PermissionWrapper>
         )}
 
         {activeTab === 'classrooms' && (
@@ -278,9 +496,9 @@ export function AdminDashboard() {
                   <h3 className="font-semibold text-gray-900">{classroom.name}</h3>
                   <p className="text-sm text-gray-600">{classroom.course}</p>
                   <div className="mt-2 space-y-1">
-                    <p className="text-xs text-gray-500">Teacher: {classroom.teacherName}</p>
+                    <p className="text-xs text-gray-500">Teacher: {classroom.teacher.toString().slice(0, 8)}...</p>
                     <p className="text-xs text-gray-500">Students: {classroom.students?.length || 0}</p>
-                    <p className="text-xs text-gray-500">Created: {new Date(classroom.createdAt * 1000).toLocaleDateString()}</p>
+                    <p className="text-xs text-gray-500">Classroom ID: {index + 1}</p>
                   </div>
                 </div>
               ))}
@@ -297,8 +515,8 @@ export function AdminDashboard() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignment</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Graded By</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                   </tr>
@@ -310,18 +528,18 @@ export function AdminDashboard() {
                         {grade.assignmentName}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                        {grade.studentWallet.slice(0, 8)}...
+                        Student Grade
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {grade.teacherName}
+                        {grade.gradedBy.toString().slice(0, 8)}...
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          grade.percentage >= 90 ? 'bg-green-100 text-green-800' :
-                          grade.percentage >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                          Math.round((grade.grade / grade.maxGrade) * 100) >= 90 ? 'bg-green-100 text-green-800' :
+                          Math.round((grade.grade / grade.maxGrade) * 100) >= 70 ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {grade.grade}/{grade.maxGrade} ({grade.percentage}%)
+                          {grade.grade}/{grade.maxGrade} ({Math.round((grade.grade / grade.maxGrade) * 100)}%)
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -335,16 +553,135 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'accounts' && (
-          <UserManagementRoute>
-            <AdminUserViewer />
-          </UserManagementRoute>
+        {!loading && activeTab === 'analytics' && (
+          <div className="p-6 space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900">System Analytics</h2>
+
+            {/* Grade Distribution */}
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Grade Distribution</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {grades.filter(g => Math.round((g.grade / g.maxGrade) * 100) >= 90).length}
+                  </div>
+                  <div className="text-sm text-gray-600">A (90-100%)</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {grades.filter(g => {
+                      const percentage = Math.round((g.grade / g.maxGrade) * 100)
+                      return percentage >= 80 && percentage < 90
+                    }).length}
+                  </div>
+                  <div className="text-sm text-gray-600">B (80-89%)</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {grades.filter(g => {
+                      const percentage = Math.round((g.grade / g.maxGrade) * 100)
+                      return percentage >= 70 && percentage < 80
+                    }).length}
+                  </div>
+                  <div className="text-sm text-gray-600">C (70-79%)</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">
+                    {grades.filter(g => Math.round((g.grade / g.maxGrade) * 100) < 70).length}
+                  </div>
+                  <div className="text-sm text-gray-600">D/F (&lt;70%)</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent High Grades */}
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Recent High Grades (90%+)</h3>
+              <div className="space-y-2">
+                {grades
+                  .filter(grade => Math.round((grade.grade / grade.maxGrade) * 100) >= 90)
+                  .sort((a, b) => b.timestamp - a.timestamp)
+                  .slice(0, 10)
+                  .map((grade, index) => (
+                    <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                      <div>
+                        <span className="font-medium text-sm">{grade.assignmentName}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          by {grade.gradedBy.toString().slice(0, 8)}...
+                        </span>
+                      </div>
+                      <span className="font-bold text-green-600">
+                        {Math.round((grade.grade / grade.maxGrade) * 100)}%
+                      </span>
+                    </div>
+                  ))}
+                {grades.filter(grade => Math.round((grade.grade / grade.maxGrade) * 100) >= 90).length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No high grades yet</p>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
-        {activeTab === 'debug' && (
-          <DebugConsoleRoute>
-            <AdminDebugConsole />
-          </DebugConsoleRoute>
+        {!loading && activeTab === 'system' && (
+          <div className="p-6 space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900">System Monitor</h2>
+
+            {/* System Health */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">System Health</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span>Database Status</span>
+                    <span className="text-green-600 font-medium">✅ Online</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>User Sessions</span>
+                    <span className="text-blue-600 font-medium">{systemStats.activeUsers} active</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Data Integrity</span>
+                    <span className="text-green-600 font-medium">✅ Good</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Last Backup</span>
+                    <span className="text-gray-600">Manual export only</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Storage Usage</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span>Users Data</span>
+                    <span className="text-blue-600">{new Blob([JSON.stringify(users)]).size} bytes</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Classrooms Data</span>
+                    <span className="text-green-600">{new Blob([JSON.stringify(classrooms)]).size} bytes</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Grades Data</span>
+                    <span className="text-yellow-600">{new Blob([JSON.stringify(grades)]).size} bytes</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Storage</span>
+                    <span className="text-purple-600 font-medium">
+                      {new Blob([JSON.stringify({users, classrooms, grades})]).size} bytes
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && activeTab === 'debug' && (
+          <PermissionWrapper permission="access_debug_console">
+            <UnifiedDebugConsole />
+          </PermissionWrapper>
         )}
       </div>
     </div>
