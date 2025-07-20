@@ -17,7 +17,7 @@ export function AuthPage({ onAuthComplete }: AuthPageProps) {
   const userExists = publicKey ? !!localStorage.getItem(`user_${publicKey.toString()}`) : false
 
   return (
-    <div className="max-w-md mx-auto">
+    <div className="max-w-md mx-auto bg-white text-gray-900" style={{ colorScheme: 'light' }}>
       {/* Auth Mode Toggle */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <div className="flex items-center justify-center mb-4">

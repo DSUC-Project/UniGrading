@@ -89,7 +89,7 @@ export function UserLogin({ onLoginComplete }: UserLoginProps) {
   })() : null
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="bg-white rounded-lg shadow-md p-6 text-gray-900" style={{ colorScheme: 'light' }}>
       <div className="text-center">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Login to UniGrading</h3>
 

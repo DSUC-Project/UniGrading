@@ -199,7 +199,7 @@ export function UnifiedDebugConsole() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white text-gray-900" style={{ colorScheme: 'light' }}>
       {/* Header */}
       <div className="bg-gradient-to-r from-red-600 to-purple-600 rounded-lg p-6 text-white">
         <div className="flex items-center justify-between">
