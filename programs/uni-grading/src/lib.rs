@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("AUb7ZQUCsWSVu4ok5CfGeDbgyQTGcgn9WSsC4PwN7MBj");
+declare_id!("edMGRxyFcpnGj5jqY6VPg4AyF3SJg9ybjjezgsJK33B");
 
 #[program]
 pub mod uni_grading {

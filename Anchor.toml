@@ -8,10 +8,10 @@ skip-lint = false
 anchor-debug = true
 
 [programs.localnet]
-uni_grading = "AUb7ZQUCsWSVu4ok5CfGeDbgyQTGcgn9WSsC4PwN7MBj"
+uni_grading = "edMGRxyFcpnGj5jqY6VPg4AyF3SJg9ybjjezgsJK33B"
 
 [programs.devnet]
-uni_grading = "AUb7ZQUCsWSVu4ok5CfGeDbgyQTGcgn9WSsC4PwN7MBj"
+uni_grading = "edMGRxyFcpnGj5jqY6VPg4AyF3SJg9ybjjezgsJK33B"
 
 [registry]
 url = "https://api.apr.dev"

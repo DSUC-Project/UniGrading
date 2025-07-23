@@ -3,7 +3,7 @@ import { Connection, PublicKey } from '@solana/web3.js'
 import { AnchorWallet } from '@solana/wallet-adapter-react'
 
 // You'll need to update this with your actual program ID after deployment
-export const PROGRAM_ID = new PublicKey('6NoADMVnvEfJbvzioDo6bhwTMocvUE5Kdfah5AHJhBhq')
+export const PROGRAM_ID = new PublicKey('edMGRxyFcpnGj5jqY6VPg4AyF3SJg9ybjjezgsJK33B')
 
 // IDL will be generated after anchor build
 // For now, we'll create a basic structure
