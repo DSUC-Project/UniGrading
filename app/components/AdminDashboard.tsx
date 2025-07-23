@@ -165,10 +165,6 @@ export function AdminDashboard() {
       return
     }
 
-    if (!confirm('Last confirmation: Type "DELETE" to confirm permanent deletion')) {
-      return
-    }
-
     try {
       // 1. Remove individual user data (most important!)
       localStorage.removeItem(`user_${userWallet}`)
