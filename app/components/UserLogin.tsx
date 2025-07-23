@@ -41,13 +41,6 @@ export function UserLogin({ onLoginComplete }: UserLoginProps) {
         return
       }
 
-      // Check if user is active
-      if (userData.isActive === false) {
-        toast.error('Your account has been deactivated. Please contact an administrator.')
-        setIsLoggingIn(false)
-        return
-      }
-
       toast.success(`Welcome back, ${userData.username}!`)
       onLoginComplete(userData.role.toLowerCase() as 'teacher' | 'student')
 

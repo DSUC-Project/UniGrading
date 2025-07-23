@@ -60,9 +60,9 @@ export function AdminDashboard() {
         // Calculate system statistics
         const stats = {
           totalUsers: allUsers.length,
-          totalClassrooms: allClassrooms.length,
+          totalClassrooms: allUsers.filter(user => user.role === 'Teacher').length,
           totalGrades: allGrades.length,
-          activeUsers: allUsers.filter(user => user.isActive).length,
+          activeUsers: allUsers.length, // All users are considered active
           averageGrade: allGrades.length > 0
             ? Math.round(allGrades.reduce((sum, grade) => sum + (grade.grade / grade.maxGrade * 100), 0) / allGrades.length)
             : 0,
@@ -93,130 +93,58 @@ export function AdminDashboard() {
     }
   }
 
-  // Deactivate user function (safer than deletion)
-  const handleDeactivateUser = (userWallet: string) => {
-    if (!validateAdminAction('deactivate user', 'manage_users')) return
+  // Delete user function
+  const handleDeleteUser = (userWallet: string) => {
+    if (!validateAdminAction('delete user', 'manage_users')) return
 
     // Confirm action
-    if (!confirm('Are you sure you want to deactivate this user? This action can be reversed.')) {
+    if (!confirm('Are you sure you want to delete this user? This will remove all their data and cannot be undone.')) {
       return
     }
 
     try {
-      // Update individual user data
-      const individualUserData = localStorage.getItem(`user_${userWallet}`)
-      if (individualUserData) {
-        const userData = JSON.parse(individualUserData)
-        userData.isActive = false
-        localStorage.setItem(`user_${userWallet}`, JSON.stringify(userData))
-      }
-
-      // Update users list
-      const updatedUsers = users.map(user =>
-        user.authority.toString() === userWallet
-          ? { ...user, isActive: false }
-          : user
-      )
-      localStorage.setItem('all_users', JSON.stringify(updatedUsers))
-      setUsers(updatedUsers)
-      toast.success('User deactivated successfully - they cannot login anymore')
-      loadData() // Refresh data
-    } catch (error) {
-      console.error('Deactivate user failed:', error)
-      toast.error('Failed to deactivate user')
-    }
-  }
-
-  // Reactivate user function
-  const handleReactivateUser = (userWallet: string) => {
-    if (!validateAdminAction('reactivate user', 'manage_users')) return
-
-    try {
-      // Update individual user data
-      const individualUserData = localStorage.getItem(`user_${userWallet}`)
-      if (individualUserData) {
-        const userData = JSON.parse(individualUserData)
-        userData.isActive = true
-        localStorage.setItem(`user_${userWallet}`, JSON.stringify(userData))
-      }
-
-      // Update users list
-      const updatedUsers = users.map(user =>
-        user.authority.toString() === userWallet
-          ? { ...user, isActive: true }
-          : user
-      )
-      localStorage.setItem('all_users', JSON.stringify(updatedUsers))
-      setUsers(updatedUsers)
-      toast.success('User reactivated successfully - they can login again')
-      loadData() // Refresh data
-    } catch (error) {
-      console.error('Reactivate user failed:', error)
-      toast.error('Failed to reactivate user')
-    }
-  }
-
-  // Permanent delete function (with extra confirmation)
-  const handlePermanentDeleteUser = (userWallet: string) => {
-    if (!validateAdminAction('permanently delete user', 'manage_users')) return
-
-    // Double confirmation for permanent deletion
-    if (!confirm('⚠️ PERMANENT DELETION ⚠️\n\nThis will permanently remove the user and ALL their data including:\n- All grades\n- Classroom memberships\n- User profile\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?')) {
-      return
-    }
-
-    if (!confirm('Last confirmation: Type "DELETE" to confirm permanent deletion')) {
-      return
-    }
-
-    try {
-      // 1. Remove individual user data (most important!)
+      // 1. Remove individual user data
       localStorage.removeItem(`user_${userWallet}`)
 
       // 2. Remove user from users list
       const updatedUsers = users.filter(user => user.authority.toString() !== userWallet)
 
-      // 3. Remove user's grades (grades where user was the teacher)
+      // 3. Remove user's grades
       const allGrades = getAllGrades()
       const updatedGrades = allGrades.filter(grade =>
         grade.gradedBy.toString() !== userWallet
       )
 
-      // 4. Remove user from classrooms (both as teacher and student)
+      // 4. Remove user from classrooms
       const allClassrooms = getAllClassrooms()
       const updatedClassrooms = allClassrooms
-        .filter(classroom => classroom.teacher.toString() !== userWallet) // Remove classrooms taught by user
+        .filter(classroom => classroom.teacher.toString() !== userWallet)
         .map(classroom => ({
           ...classroom,
           students: classroom.students?.filter(student => student.pubkey.toString() !== userWallet) || []
         }))
 
       // 5. Remove any user-specific localStorage keys
-      // Check for any other keys that might belong to this user
       const keysToRemove: string[] = []
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
-        if (key && (
-          key.includes(userWallet) ||
-          key.startsWith(`${userWallet}_`) ||
-          key.endsWith(`_${userWallet}`)
-        )) {
+        if (key && key.includes(userWallet)) {
           keysToRemove.push(key)
         }
       }
       keysToRemove.forEach(key => localStorage.removeItem(key))
 
-      // 6. Update localStorage with cleaned data
+      // 6. Update localStorage
       localStorage.setItem('all_users', JSON.stringify(updatedUsers))
       localStorage.setItem('all_grades', JSON.stringify(updatedGrades))
       localStorage.setItem('all_classrooms', JSON.stringify(updatedClassrooms))
 
       setUsers(updatedUsers)
-      toast.success('User permanently deleted - they can no longer login')
+      toast.success('User deleted successfully')
       loadData() // Refresh data
     } catch (error) {
-      console.error('Permanent delete user failed:', error)
-      toast.error('Failed to permanently delete user')
+      console.error('Delete user failed:', error)
+      toast.error('Failed to delete user')
     }
   }
 
@@ -411,7 +339,6 @@ export function AdminDashboard() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallet</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -440,41 +367,15 @@ export function AdminDashboard() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(user.createdAt * 1000).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {user.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <PermissionWrapper permission="manage_users" hideIfNoPermission>
-                            <div className="flex space-x-2">
-                              {user.isActive ? (
-                                <button
-                                  onClick={() => handleDeactivateUser(user.authority.toString())}
-                                  className="text-yellow-600 hover:text-yellow-900"
-                                  title="Deactivate user"
-                                >
-                                  ⏸️
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleReactivateUser(user.authority.toString())}
-                                  className="text-green-600 hover:text-green-900"
-                                  title="Reactivate user"
-                                >
-                                  ▶️
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handlePermanentDeleteUser(user.authority.toString())}
-                                className="text-red-600 hover:text-red-900"
-                                title="Permanently delete user (irreversible)"
-                              >
-                                🗑️
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handleDeleteUser(user.authority.toString())}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete user"
+                            >
+                              🗑️
+                            </button>
                           </PermissionWrapper>
                         </td>
                       </tr>

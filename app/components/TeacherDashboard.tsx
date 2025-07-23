@@ -2,20 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useUniGrading } from '../hooks/useUniGrading'
-import { ClassroomManager } from './ClassroomManager'
-import { GradeManager } from './GradeManager'
-import { getAllClassrooms, getAllGrades, getAllUsers } from '../lib/blockchain-utils'
 
-interface ClassroomData {
-  id: string
-  name: string
-  course: string
-  teacher: string
-  teacherName: string
-  students: any[]
-  createdAt: number
-  isActive: boolean
-}
+import { GradeManager } from './GradeManager'
+import { getAllGrades } from '../lib/blockchain-utils'
+
+
 
 interface GradeData {
   id: string
@@ -32,17 +23,14 @@ interface GradeData {
 
 export function TeacherDashboard() {
   const { currentUser } = useUniGrading()
-  const [activeTab, setActiveTab] = useState<'overview' | 'classrooms' | 'grades' | 'students' | 'analytics' | 'reports'>('overview')
-  const [myClassrooms, setMyClassrooms] = useState<ClassroomData[]>([])
+  const [activeTab, setActiveTab] = useState<'overview' | 'classrooms' | 'grades' | 'analytics' | 'reports'>('overview')
   const [myGrades, setMyGrades] = useState<GradeData[]>([])
-  const [allStudents, setAllStudents] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊', description: 'Teaching overview and statistics' },
     { id: 'classrooms', label: 'Manage Classes', icon: '🏫', description: 'Manage your classrooms' },
     { id: 'grades', label: 'Grade Management', icon: '📝', description: 'Assign and manage grades' },
-    { id: 'students', label: 'Student Analytics', icon: '👨‍🎓', description: 'Analyze student performance' },
     { id: 'analytics', label: 'Teaching Analytics', icon: '📈', description: 'Teaching performance metrics' },
     { id: 'reports', label: 'Reports', icon: '📋', description: 'Generate teaching reports' }
   ]
@@ -54,24 +42,12 @@ export function TeacherDashboard() {
 
       setLoading(true)
       try {
-        // Get classrooms taught by current teacher
-        const allClassrooms = getAllClassrooms()
-        const teacherClassrooms = allClassrooms.filter(
-          (classroom: any) => classroom.teacher === currentUser.authority.toString()
-        )
-        setMyClassrooms(teacherClassrooms)
-
         // Get grades assigned by current teacher
         const allGrades = getAllGrades()
         const teacherGrades = allGrades.filter(
           (grade: any) => grade.teacherWallet === currentUser.authority.toString()
         )
         setMyGrades(teacherGrades)
-
-        // Get all students for analytics
-        const allUsers = getAllUsers()
-        const students = allUsers.filter((user: any) => user.role === 'Student')
-        setAllStudents(students)
       } catch (error) {
         console.error('Error loading teacher data:', error)
       } finally {
@@ -87,17 +63,14 @@ export function TeacherDashboard() {
 
   // Calculate statistics
   const getTeachingStats = () => {
-    const totalStudents = myClassrooms.reduce((sum, classroom) => sum + (classroom.students?.length || 0), 0)
     const averageGrade = myGrades.length > 0
-      ? Math.round(myGrades.reduce((sum, grade) => sum + grade.percentage, 0) / myGrades.length)
+      ? Math.round(myGrades.reduce((sum, grade) => sum + (grade.grade / grade.maxGrade * 100), 0) / myGrades.length)
       : 0
     const recentGrades = myGrades.filter(grade =>
       Date.now() - grade.timestamp < 7 * 24 * 60 * 60 * 1000 // Last 7 days
     ).length
 
     return {
-      totalClassrooms: myClassrooms.length,
-      totalStudents,
       totalGrades: myGrades.length,
       averageGrade,
       recentGrades
@@ -116,8 +89,8 @@ export function TeacherDashboard() {
             <p className="text-green-100">Welcome back, {currentUser?.username}!</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold">{stats.totalStudents}</div>
-            <div className="text-sm text-green-200">Total Students</div>
+            <div className="text-3xl font-bold">{stats.totalGrades}</div>
+            <div className="text-sm text-green-200">Total Grades</div>
           </div>
         </div>
       </div>
@@ -157,15 +130,7 @@ export function TeacherDashboard() {
             <h2 className="text-xl font-semibold text-gray-900">Teaching Overview</h2>
 
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4 text-center">
-                <div className="text-2xl font-bold text-blue-600">{stats.totalClassrooms}</div>
-                <div className="text-sm text-blue-600">My Classes</div>
-              </div>
-              <div className="bg-green-50 rounded-lg p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">{stats.totalStudents}</div>
-                <div className="text-sm text-green-600">Total Students</div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-purple-50 rounded-lg p-4 text-center">
                 <div className="text-2xl font-bold text-purple-600">{stats.totalGrades}</div>
                 <div className="text-sm text-purple-600">Grades Given</div>
@@ -211,28 +176,33 @@ export function TeacherDashboard() {
               </div>
             </div>
 
-            {/* My Classrooms */}
+            {/* Recent Grades */}
             <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-medium text-gray-900 mb-3">My Classrooms</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {myClassrooms.map((classroom, index) => (
-                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center mb-2">
-                      <div className="text-xl mr-2">🏫</div>
+              <h3 className="font-medium text-gray-900 mb-3">Recent Grades</h3>
+              <div className="space-y-2">
+                {myGrades.slice(0, 5).map((grade, index) => (
+                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-3">
+                    <div className="flex justify-between items-center">
                       <div>
-                        <h4 className="font-semibold text-gray-900">{classroom.name}</h4>
-                        <p className="text-sm text-gray-600">{classroom.course}</p>
+                        <h4 className="font-semibold text-gray-900">{grade.assignmentName}</h4>
+                        <p className="text-sm text-gray-600">
+                          {new Date(grade.timestamp).toLocaleDateString()}
+                        </p>
                       </div>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      <p>Students: {classroom.students?.length || 0}</p>
-                      <p>Created: {new Date(classroom.createdAt * 1000).toLocaleDateString()}</p>
+                      <div className="text-right">
+                        <span className="font-bold text-blue-600">
+                          {grade.grade}/{grade.maxGrade}
+                        </span>
+                        <p className="text-xs text-gray-500">
+                          {Math.round((grade.grade / grade.maxGrade) * 100)}%
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}
-                {myClassrooms.length === 0 && (
-                  <div className="col-span-full text-center py-4 text-gray-500">
-                    No classrooms created yet
+                {myGrades.length === 0 && (
+                  <div className="text-center py-4 text-gray-500">
+                    No grades assigned yet
                   </div>
                 )}
               </div>
@@ -242,7 +212,11 @@ export function TeacherDashboard() {
 
         {!loading && activeTab === 'classrooms' && (
           <div className="p-6">
-            <ClassroomManager />
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🏫</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Classroom Management</h3>
+              <p className="text-gray-500">This feature is coming soon...</p>
+            </div>
           </div>
         )}
 
@@ -397,28 +371,36 @@ export function TeacherDashboard() {
               </div>
 
               <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Class Management</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Grade Distribution</h3>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span>Total Classes:</span>
-                    <span className="font-bold">{stats.totalClassrooms}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Students:</span>
-                    <span className="font-bold text-blue-600">{stats.totalStudents}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Avg Students/Class:</span>
+                    <span>A Grades (90-100%):</span>
                     <span className="font-bold text-green-600">
-                      {myClassrooms.length > 0
-                        ? Math.round(stats.totalStudents / myClassrooms.length)
-                        : 0}
+                      {myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) >= 90).length}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Active Classes:</span>
-                    <span className="font-bold text-purple-600">
-                      {myClassrooms.filter(c => c.isActive).length}
+                    <span>B Grades (80-89%):</span>
+                    <span className="font-bold text-blue-600">
+                      {myGrades.filter(g => {
+                        const percentage = Math.round((g.grade / g.maxGrade) * 100)
+                        return percentage >= 80 && percentage < 90
+                      }).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>C Grades (70-79%):</span>
+                    <span className="font-bold text-yellow-600">
+                      {myGrades.filter(g => {
+                        const percentage = Math.round((g.grade / g.maxGrade) * 100)
+                        return percentage >= 70 && percentage < 80
+                      }).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>D/F Grades (&lt;70%):</span>
+                    <span className="font-bold text-red-600">
+                      {myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) < 70).length}
                     </span>
                   </div>
                 </div>
@@ -475,11 +457,11 @@ export function TeacherDashboard() {
               <h3 className="text-lg font-medium text-gray-900 mb-4">Teaching Summary Report</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h4 className="font-medium text-gray-700 mb-3">Class Overview</h4>
+                  <h4 className="font-medium text-gray-700 mb-3">Teaching Overview</h4>
                   <div className="space-y-2 text-sm">
                     <p><strong>Teacher:</strong> {currentUser?.username}</p>
-                    <p><strong>Total Classes:</strong> {stats.totalClassrooms}</p>
-                    <p><strong>Total Students:</strong> {stats.totalStudents}</p>
+                    <p><strong>Total Grades:</strong> {stats.totalGrades}</p>
+                    <p><strong>Average Grade:</strong> {stats.averageGrade}%</p>
                     <p><strong>Report Generated:</strong> {new Date().toLocaleDateString()}</p>
                   </div>
                 </div>
@@ -499,59 +481,49 @@ export function TeacherDashboard() {
               </div>
             </div>
 
-            {/* Detailed Class Reports */}
+            {/* Grade Summary */}
             <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Individual Class Reports</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Grade Summary</h3>
               <div className="space-y-4">
-                {myClassrooms.map((classroom, index) => {
-                  const classGrades = myGrades.filter(grade =>
-                    classroom.students?.some(student => student.pubkey === grade.studentWallet)
-                  )
-                  const classAverage = classGrades.length > 0
-                    ? Math.round(classGrades.reduce((sum, grade) => sum + grade.percentage, 0) / classGrades.length)
-                    : 0
-
-                  return (
-                    <div key={index} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-900">{classroom.name}</h4>
-                          <p className="text-sm text-gray-600">{classroom.course}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-blue-600">{classAverage}%</div>
-                          <div className="text-xs text-gray-500">Class Average</div>
-                        </div>
+                {myGrades.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-medium text-gray-700 mb-3">Recent Assignments</h4>
+                      <div className="space-y-2">
+                        {myGrades.slice(0, 5).map((grade, index) => (
+                          <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                            <span className="text-sm">{grade.assignmentName}</span>
+                            <span className="font-medium text-blue-600">
+                              {Math.round((grade.grade / grade.maxGrade) * 100)}%
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-600">Students:</span>
-                          <span className="font-medium ml-1">{classroom.students?.length || 0}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Assignments:</span>
-                          <span className="font-medium ml-1">{classGrades.length}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Pass Rate:</span>
-                          <span className="font-medium ml-1 text-green-600">
-                            {classGrades.length > 0
-                              ? Math.round((classGrades.filter(g => g.percentage >= 70).length / classGrades.length) * 100)
-                              : 0}%
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-700 mb-3">Grade Statistics</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Highest Grade:</span>
+                          <span className="font-medium text-green-600">
+                            {Math.max(...myGrades.map(g => Math.round((g.grade / g.maxGrade) * 100)))}%
                           </span>
                         </div>
-                        <div>
-                          <span className="text-gray-600">A Grades:</span>
-                          <span className="font-medium ml-1 text-purple-600">
-                            {classGrades.filter(g => g.percentage >= 90).length}
+                        <div className="flex justify-between">
+                          <span>Lowest Grade:</span>
+                          <span className="font-medium text-red-600">
+                            {Math.min(...myGrades.map(g => Math.round((g.grade / g.maxGrade) * 100)))}%
                           </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total Assignments:</span>
+                          <span className="font-medium">{myGrades.length}</span>
                         </div>
                       </div>
                     </div>
-                  )
-                })}
-                {myClassrooms.length === 0 && (
-                  <p className="text-gray-500 text-center py-4">No classes to report on</p>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No grades to report on</p>
                 )}
               </div>
             </div>
@@ -566,7 +538,6 @@ export function TeacherDashboard() {
                       teacher: currentUser?.username,
                       generatedAt: new Date().toISOString(),
                       stats,
-                      classrooms: myClassrooms,
                       grades: myGrades
                     }
                     const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
@@ -586,9 +557,9 @@ export function TeacherDashboard() {
                 <button
                   onClick={() => {
                     const csvData = myGrades.map(grade =>
-                      `${grade.assignmentName},${grade.studentWallet.slice(0, 8)},${grade.grade},${grade.maxGrade},${grade.percentage}%,${new Date(grade.timestamp).toLocaleDateString()}`
+                      `${grade.assignmentName},${grade.grade},${grade.maxGrade},${Math.round((grade.grade / grade.maxGrade) * 100)}%,${new Date(grade.timestamp).toLocaleDateString()}`
                     ).join('\n')
-                    const csv = 'Assignment,Student,Grade,Max Grade,Percentage,Date\n' + csvData
+                    const csv = 'Assignment,Grade,Max Grade,Percentage,Date\n' + csvData
                     const blob = new Blob([csv], { type: 'text/csv' })
                     const url = URL.createObjectURL(blob)
                     const a = document.createElement('a')
