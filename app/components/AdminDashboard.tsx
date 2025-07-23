@@ -5,7 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { useUniGrading } from '../hooks/useUniGrading'
 import { useAdminPermissions } from '../hooks/useAdminPermissions'
 import { PermissionWrapper } from './AdminRoute'
-import { UnifiedDebugConsole } from './UnifiedDebugConsole'
+
 import {
   getAllUsers,
   getAllClassrooms,
@@ -22,7 +22,7 @@ export function AdminDashboard() {
     validateAdminAction
   } = useAdminPermissions()
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'classrooms' | 'grades' | 'analytics' | 'system' | 'debug'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'classrooms' | 'grades' | 'analytics' | 'system'>('overview')
   const [users, setUsers] = useState<User[]>([])
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [grades, setGrades] = useState<Grade[]>([])
@@ -229,7 +229,7 @@ export function AdminDashboard() {
     { id: 'grades', label: 'Grade Analytics', icon: '📈', description: 'Analyze all grades' },
     { id: 'analytics', label: 'System Analytics', icon: '📊', description: 'Advanced analytics' },
     { id: 'system', label: 'System Monitor', icon: '🖥️', description: 'System monitoring' },
-    { id: 'debug', label: 'Debug Console', icon: '🔧', description: 'Debug console' }
+
   ]
 
   return (
@@ -255,7 +255,7 @@ export function AdminDashboard() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as 'overview' | 'users' | 'classrooms' | 'grades' | 'analytics' | 'system' | 'debug')}
+              onClick={() => setActiveTab(tab.id as 'overview' | 'users' | 'classrooms' | 'grades' | 'analytics' | 'system')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === tab.id
                   ? 'border-purple-500 text-purple-600'
@@ -678,11 +678,7 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {!loading && activeTab === 'debug' && (
-          <PermissionWrapper permission="access_debug_console">
-            <UnifiedDebugConsole />
-          </PermissionWrapper>
-        )}
+
       </div>
     </div>
   )
