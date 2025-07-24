@@ -129,7 +129,7 @@ export const IDL = {
 
 export function getProgram(connection: Connection, wallet: AnchorWallet) {
   const provider = new AnchorProvider(connection, wallet, {})
-  return new Program(IDL as any, PROGRAM_ID, provider)
+  return new Program(IDL as any, provider)
 }
 
 export function getProvider(connection: Connection, wallet: AnchorWallet) {
