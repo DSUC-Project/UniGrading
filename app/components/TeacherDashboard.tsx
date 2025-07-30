@@ -7,7 +7,6 @@ import { GradeManager } from './GradeManager'
 import { getAllGrades } from '../lib/blockchain-utils'
 
 
-
 interface GradeData {
   id: string
   studentWallet: string
@@ -157,12 +156,12 @@ export function TeacherDashboard() {
                     </div>
                     <div className="text-right">
                       <span className={`inline-flex px-2 py-1 text-sm font-semibold rounded-full ${
-                        grade.percentage >= 90 ? 'bg-green-100 text-green-800' :
-                        grade.percentage >= 80 ? 'bg-blue-100 text-blue-800' :
-                        grade.percentage >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                        Math.round((grade.grade / grade.maxGrade) * 100) >= 90 ? 'bg-green-100 text-green-800' :
+                        Math.round((grade.grade / grade.maxGrade) * 100) >= 80 ? 'bg-blue-100 text-blue-800' :
+                        Math.round((grade.grade / grade.maxGrade) * 100) >= 70 ? 'bg-yellow-100 text-yellow-800' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {grade.grade}/{grade.maxGrade} ({grade.percentage}%)
+                        {grade.grade}/{grade.maxGrade} ({Math.round((grade.grade / grade.maxGrade) * 100)}%)
                       </span>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(grade.timestamp).toLocaleDateString()}
@@ -363,88 +362,17 @@ export function TeacherDashboard() {
                     <span>Pass Rate (≥70%):</span>
                     <span className="font-bold text-purple-600">
                       {myGrades.length > 0
-                        ? Math.round((myGrades.filter(g => g.percentage >= 70).length / myGrades.length) * 100)
+                        ? Math.round((myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) >= 70).length / myGrades.length) * 100)
                         : 0}%
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Grade Distribution</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span>A Grades (90-100%):</span>
-                    <span className="font-bold text-green-600">
-                      {myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) >= 90).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>B Grades (80-89%):</span>
-                    <span className="font-bold text-blue-600">
-                      {myGrades.filter(g => {
-                        const percentage = Math.round((g.grade / g.maxGrade) * 100)
-                        return percentage >= 80 && percentage < 90
-                      }).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>C Grades (70-79%):</span>
-                    <span className="font-bold text-yellow-600">
-                      {myGrades.filter(g => {
-                        const percentage = Math.round((g.grade / g.maxGrade) * 100)
-                        return percentage >= 70 && percentage < 80
-                      }).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>D/F Grades (&lt;70%):</span>
-                    <span className="font-bold text-red-600">
-                      {myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) < 70).length}
-                    </span>
-                  </div>
-                </div>
-              </div>
+
             </div>
 
-            {/* Grade Distribution Chart */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Grade Distribution Analysis</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-3xl font-bold text-green-600">
-                    {myGrades.length > 0
-                      ? Math.round((myGrades.filter(g => g.percentage >= 90).length / myGrades.length) * 100)
-                      : 0}%
-                  </div>
-                  <div className="text-sm text-green-600">A Grades</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-3xl font-bold text-blue-600">
-                    {myGrades.length > 0
-                      ? Math.round((myGrades.filter(g => g.percentage >= 80 && g.percentage < 90).length / myGrades.length) * 100)
-                      : 0}%
-                  </div>
-                  <div className="text-sm text-blue-600">B Grades</div>
-                </div>
-                <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                  <div className="text-3xl font-bold text-yellow-600">
-                    {myGrades.length > 0
-                      ? Math.round((myGrades.filter(g => g.percentage >= 70 && g.percentage < 80).length / myGrades.length) * 100)
-                      : 0}%
-                  </div>
-                  <div className="text-sm text-yellow-600">C Grades</div>
-                </div>
-                <div className="text-center p-4 bg-red-50 rounded-lg">
-                  <div className="text-3xl font-bold text-red-600">
-                    {myGrades.length > 0
-                      ? Math.round((myGrades.filter(g => g.percentage < 70).length / myGrades.length) * 100)
-                      : 0}%
-                  </div>
-                  <div className="text-sm text-red-600">Below 70%</div>
-                </div>
-              </div>
-            </div>
+
           </div>
         )}
 
@@ -471,10 +399,10 @@ export function TeacherDashboard() {
                     <p><strong>Total Assignments Graded:</strong> {stats.totalGrades}</p>
                     <p><strong>Class Average:</strong> {stats.averageGrade}%</p>
                     <p><strong>Pass Rate:</strong> {myGrades.length > 0
-                      ? Math.round((myGrades.filter(g => g.percentage >= 70).length / myGrades.length) * 100)
+                      ? Math.round((myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) >= 70).length / myGrades.length) * 100)
                       : 0}%</p>
                     <p><strong>Excellence Rate (A):</strong> {myGrades.length > 0
-                      ? Math.round((myGrades.filter(g => g.percentage >= 90).length / myGrades.length) * 100)
+                      ? Math.round((myGrades.filter(g => Math.round((g.grade / g.maxGrade) * 100) >= 90).length / myGrades.length) * 100)
                       : 0}%</p>
                   </div>
                 </div>
