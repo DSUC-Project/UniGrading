@@ -56,4 +56,16 @@ University grading system on Solana blockchain
 - ❌ Security hardening
 - ❌ Testing suite
 - ❌ Documentation
-- 
+
+## Root Directory Structure:
+UniGrading/
+├── programs/           # Smart contracts (Rust)
+│   └── uni-grading/   # Main program
+├── app/               # Frontend (Next.js)
+│   ├── components/    # React components
+│   ├── hooks/         # Custom hooks
+│   ├── lib/          # Utilities
+│   └── app/          # App router
+├── tests/            # Integration tests
+├── target/           # Compiled artifacts
+└── Anchor.toml       # Anchor configuration
